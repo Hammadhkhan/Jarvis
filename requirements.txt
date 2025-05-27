@@ -2,3 +2,4 @@ pyAudioAnalysis
 sounddevice
 openai
 requests
+gTTS

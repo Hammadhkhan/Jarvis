@@ -15,3 +15,6 @@ jarvis.db
 
 # Ignore config file with actual keys
 backend/config.json
+
+# Ignore temporary TTS audio files
+backend/temp_tts_audio/
