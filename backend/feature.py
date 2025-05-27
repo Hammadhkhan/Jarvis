@@ -24,7 +24,7 @@ from backend.helper import extract_yt_term, remove_words
 
 # New imports for OpenAI chatbot
 from openai import OpenAI # Changed from "import openai" to "from openai import OpenAI" for OpenAI v1.x+
-from backend.llm_service import get_openai_api_key
+from backend.api_service import get_openai_api_key
 
 conn = sqlite3.connect("jarvis.db")
 cursor = conn.cursor()

@@ -6,6 +6,8 @@ import eel
 
 # Import functions from backend.feature
 from backend.feature import openCommand, findContact, whatsApp, PlayYoutube, chatBot
+# New import for weather
+from backend.weather import get_weather
 
 # Initialize Conversation History
 conversation_log = []
@@ -85,6 +87,8 @@ def get_time_command(query):
     speak(response)
 
 # Command mapping (as it was in the original file)
+# Note: The new weather command will be handled by specific 'elif' conditions,
+# not directly in this map, for more flexible phrase matching.
 command_mapping = {
     "open": open_command_wrapper,
     "send message": handle_whatsapp_request,
@@ -110,46 +114,63 @@ def takeAllCommands(message=None):
         query = message.lower()
         print(f"Message received: {query}")
         eel.senderText(query)
-        # For text input, we might want to speak the query for consistency, or not.
-        # For now, let's assume text inputs don't need to be spoken back immediately.
-        # If it's a command, the command handler will speak. If it's for chatbot, chatbot response will be spoken.
+        # For text input, we won't speak the query back immediately here.
 
     try:
         command_executed = False
         for keyword, function in command_mapping.items():
-            if keyword in query:
-                function(query) # These functions handle their own speak() calls
+            if keyword in query: # Simple keyword check for mapped commands
+                function(query) 
                 command_executed = True
-                # For specific commands, we generally don't want to add them to chatbot history
-                # unless the command itself is a form of conversation (e.g., setting a reminder).
-                # For now, only chatbot interactions update conversation_log.
                 break  
-
+        
         if not command_executed:
-            # This is where the chatbot logic is invoked
-            # The original "I understood: {query}. Handing over to chatbot." is removed
-            # as the chatbot's response will be the primary feedback.
-            
-            # Pass the current query and the conversation history
-            assistant_response = chatBot(query, conversation_history=conversation_log)
-            
-            # Speak the assistant's response
-            speak(assistant_response) # Crucial: speak the chatbot's actual reply
+            # Handle commands not in the simple map, like weather or fallback to chatbot
+            if "weather in" in query or "how's the weather in" in query or \
+               "temperature in" in query or "forecast for" in query or \
+               query.startswith("weather "): # Catches "weather London"
 
-            # Update conversation history
-            if query: # Ensure query is not None or empty before adding
-                conversation_log.append({"role": "user", "content": query})
-            if assistant_response: # Ensure response is not None or empty
-                conversation_log.append({"role": "assistant", "content": assistant_response})
+                city_name = ""
+                # Prioritize more specific phrases first
+                if "weather in" in query:
+                    city_name = query.split("weather in", 1)[-1].strip()
+                elif "how's the weather in" in query:
+                    city_name = query.split("how's the weather in", 1)[-1].strip()
+                elif "temperature in" in query:
+                    city_name = query.split("temperature in", 1)[-1].strip()
+                elif "forecast for" in query:
+                    city_name = query.split("forecast for", 1)[-1].strip()
+                elif query.startswith("weather "): # Generic "weather cityname"
+                     parts = query.split("weather ", 1)
+                     if len(parts) > 1:
+                         city_name = parts[1].strip()
+                
+                # Remove any potential question marks if city name is at the end
+                if city_name.endswith("?"):
+                    city_name = city_name[:-1].strip()
 
-            # Keep conversation history to a manageable size
-            if len(conversation_log) > MAX_HISTORY_MESSAGES:
-                # Remove the oldest messages (e.g., the first two, which is one user/assistant pair)
-                # This keeps the most recent N messages.
-                conversation_log = conversation_log[len(conversation_log) - MAX_HISTORY_MESSAGES:]
-                print(f"Conversation log trimmed to the last {MAX_HISTORY_MESSAGES} messages.")
-            
-            print(f"DEBUG: Current conversation log: {conversation_log}") # For debugging
+                if city_name:
+                    # speak(f"Fetching weather for {city_name}...") # Optional intermediate feedback
+                    weather_report = get_weather(city_name)
+                    speak(weather_report)
+                else:
+                    speak("Which city's weather are you interested in? Please try again, for example, say 'weather in London'.")
+                command_executed = True # Mark as executed even if city_name was missing, as intent was weather.
+
+            else: # Fallback to chatbot if no other command matched
+                assistant_response = chatBot(query, conversation_history=conversation_log)
+                speak(assistant_response)
+
+                if query: 
+                    conversation_log.append({"role": "user", "content": query})
+                if assistant_response: 
+                    conversation_log.append({"role": "assistant", "content": assistant_response})
+
+                if len(conversation_log) > MAX_HISTORY_MESSAGES:
+                    conversation_log = conversation_log[len(conversation_log) - MAX_HISTORY_MESSAGES:]
+                    print(f"Conversation log trimmed to the last {MAX_HISTORY_MESSAGES} messages.")
+                
+                print(f"DEBUG: Current conversation log: {conversation_log}")
 
     except Exception as e:
         print(f"An error occurred in takeAllCommands: {e}")

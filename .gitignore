@@ -13,5 +13,5 @@ jarvis.db
 # Ignore backend cookie.json
 /backend/cookie.json
 
-# Ignore OpenAI config file with actual key
-backend/config_openai.json
+# Ignore config file with actual keys
+backend/config.json
