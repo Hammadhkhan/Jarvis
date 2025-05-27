@@ -7,6 +7,10 @@ import eel
 # Import functions from backend.feature
 from backend.feature import openCommand, findContact, whatsApp, PlayYoutube, chatBot
 
+# Initialize Conversation History
+conversation_log = []
+MAX_HISTORY_MESSAGES = 10 # Max messages (e.g., 5 user + 5 assistant pairs)
+
 def speak(text):
     text = str(text)
     engine = pyttsx3.init('sapi5')
@@ -33,23 +37,21 @@ def takecommand():
         query = r.recognize_google(audio, language='en-US')
         print(f"User said: {query}\n")
         eel.DisplayMessage(query)
-        # speak(query) # Removed speak(query) from here as commands will be spoken by their handlers or if no command is found
+        speak(query) # Speak the user's recognized command
     except Exception as e:
         print(f"Error: {str(e)}\n")
         speak("Sorry, I could not understand. Please try again.")
         return None
     return query.lower()
 
-# Wrapper functions
+# Wrapper functions (as they were in the original file)
 def open_command_wrapper(query):
     openCommand(query)
 
 def handle_whatsapp_request(query):
     flag = ""
-    # Determine flag based on query
     if "send message" in query:
         flag = 'message'
-        # It's important to get the message content *after* confirming the contact
     elif "call" in query:
         flag = 'call'
     elif "video call" in query:
@@ -58,19 +60,20 @@ def handle_whatsapp_request(query):
         speak("Could not determine WhatsApp action. Please specify send message, call, or video call.")
         return
 
-    Phone, name = findContact(query) # findContact might need to be adjusted or the query pre-processed to extract recipient
-    if Phone != 0:
+    Phone, name = findContact(query)
+    if Phone and name: # Check if Phone and name are not None/0/empty
         if flag == 'message':
             speak(f"What message would you like to send to {name}?")
             message_content = takecommand()
-            if message_content: # Ensure a message was actually captured
+            if message_content: 
                 whatsApp(Phone, message_content, flag, name)
             else:
                 speak(f"No message content provided for {name}. WhatsApp action cancelled.")
-        else: # For 'call' or 'video call'
-            whatsApp(Phone, query, flag, name) # query might not be the right thing to pass for message content here
+        else: 
+            whatsApp(Phone, query, flag, name)
     else:
-        speak(f"Could not find contact for {query}. WhatsApp action cancelled.")
+        # findContact already speaks if contact not found, so just log or return
+        print(f"Cannot proceed with WhatsApp action for '{query}' as contact was not found.")
 
 
 def play_youtube_command(query):
@@ -81,55 +84,72 @@ def get_time_command(query):
     response = f"The current time is {current_time}"
     speak(response)
 
-# Command mapping
+# Command mapping (as it was in the original file)
 command_mapping = {
     "open": open_command_wrapper,
-    "send message": handle_whatsapp_request, # More specific than just "whatsapp"
-    "call": handle_whatsapp_request,         # Route to the same handler
-    "video call": handle_whatsapp_request,   # Route to the same handler
+    "send message": handle_whatsapp_request,
+    "call": handle_whatsapp_request,
+    "video call": handle_whatsapp_request,
     "on youtube": play_youtube_command,
     "time": get_time_command,
 }
 
 @eel.expose
 def takeAllCommands(message=None):
+    global conversation_log # Declare intent to modify global variable
+
     if message is None:
         query = takecommand()
         if not query:
-            # speak("No command was given or understood.") # takecommand now handles its own error speaking
             eel.ShowHood()
             return
         print(f"Voice input: {query}")
         eel.senderText(query)
-        # speak(query) # Speak the recognized query before processing
+        # User's query is already spoken by takecommand()
     else:
-        query = message.lower() # Ensure message is lowercased like takecommand output
+        query = message.lower()
         print(f"Message received: {query}")
         eel.senderText(query)
-        # speak(f"Received command: {query}") # Optional: speak the command received via text input
-
-    # Speak the recognized/received query once before processing
-    # This was previously done in takecommand() or just after receiving a message
-    # We should do it here to ensure it's spoken before any command action.
-    # However, individual commands also call speak(), so this might be redundant or too chatty.
-    # Let's comment it out for now and let command handlers do the speaking.
-    # speak(query) 
+        # For text input, we might want to speak the query for consistency, or not.
+        # For now, let's assume text inputs don't need to be spoken back immediately.
+        # If it's a command, the command handler will speak. If it's for chatbot, chatbot response will be spoken.
 
     try:
         command_executed = False
         for keyword, function in command_mapping.items():
             if keyword in query:
-                function(query)
+                function(query) # These functions handle their own speak() calls
                 command_executed = True
-                break  # Exit after the first matched command
+                # For specific commands, we generally don't want to add them to chatbot history
+                # unless the command itself is a form of conversation (e.g., setting a reminder).
+                # For now, only chatbot interactions update conversation_log.
+                break  
 
         if not command_executed:
-            # If no specific command was matched, treat it as a general query for the chatbot
-            # Or speak that the command wasn't understood if not using a chatbot as a fallback.
-            speak(f"I understood: {query}. Handing over to chatbot.") # Let user know what was understood
-            chatBot(query)
-            # speak("I'm not sure how to respond to that. Can you try a different command?")
+            # This is where the chatbot logic is invoked
+            # The original "I understood: {query}. Handing over to chatbot." is removed
+            # as the chatbot's response will be the primary feedback.
+            
+            # Pass the current query and the conversation history
+            assistant_response = chatBot(query, conversation_history=conversation_log)
+            
+            # Speak the assistant's response
+            speak(assistant_response) # Crucial: speak the chatbot's actual reply
 
+            # Update conversation history
+            if query: # Ensure query is not None or empty before adding
+                conversation_log.append({"role": "user", "content": query})
+            if assistant_response: # Ensure response is not None or empty
+                conversation_log.append({"role": "assistant", "content": assistant_response})
+
+            # Keep conversation history to a manageable size
+            if len(conversation_log) > MAX_HISTORY_MESSAGES:
+                # Remove the oldest messages (e.g., the first two, which is one user/assistant pair)
+                # This keeps the most recent N messages.
+                conversation_log = conversation_log[len(conversation_log) - MAX_HISTORY_MESSAGES:]
+                print(f"Conversation log trimmed to the last {MAX_HISTORY_MESSAGES} messages.")
+            
+            print(f"DEBUG: Current conversation log: {conversation_log}") # For debugging
 
     except Exception as e:
         print(f"An error occurred in takeAllCommands: {e}")
